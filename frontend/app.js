@@ -57,7 +57,7 @@ async function renderBrief() {
 const ITEMS = () => DIGEST ? [...DIGEST.needs_you, ...DIGEST.glance, ...DIGEST.routine.flatMap(g => g.items)] : [];
 function card(i) {
   if (i.kind === "signal") return `<div class="card" data-id="${esc(i.id)}"><div class="row1"><span><span class="tick">${i.symbol}</span> · ${esc(i.sector)}</span><span class="tag sig">${i.reasons.join(" + ")}</span></div>
-    <div style="display:flex;justify-content:space-between;align-items:center"><div><div class="hd">${esc(i.headline)}</div><div class="sum">Close ₹${fmt(i.snap.close)} · ${pct(i.snap.change_pct)} · 1m ${pct(i.snap.ret_1m_pct)}</div></div>${spark(i.snap.spark)}</div></div>`;
+    <div style="display:flex;justify-content:space-between;align-items:center"><div><div class="hd">${esc(i.headline)}</div><div class="sum">Close ₹${fmt(i.snap.close)} · ${pct(i.snap.change_pct)} · 1m ${pct(i.snap.ret_1m_pct)}</div></div>${spark(i.snap.spark)}</div>${i.why ? `<div class="more">${esc(i.why)}</div>` : ""}</div>`;
   return `<div class="card" data-id="${esc(i.id)}"><div class="row1"><span><span class="tick">${i.symbol}</span> · ${ago(i.date)} ago</span><span class="tag ${i.weight >= 95 ? "hot" : ""}">${esc(i.label)}</span></div>
     <div class="hd">${esc(i.subject)}</div><div class="sum">${esc(i.summary || "")}</div>
     <div class="more">${i.type === "results" ? "See Revenue · EBITDA · PBT · PAT →" : i.type === "mgmt" ? "Who is it? →" : "Brief me →"}${i.related ? ` &nbsp;+${i.related.length} related` : ""}</div></div>`;

@@ -120,6 +120,17 @@ def digest(hours: float | None = None, rules: dict | None = None):
     signals = [s for s in price_signals(snaps, rules) if _parse(s["date"] + "T15:30:00+05:30") and
                _parse(s["date"] + "T15:30:00+05:30") >= since - timedelta(hours=18)]
 
+    # A price/volume trigger is only useful with a "why": attach that stock's
+    # filings from the same session, or say plainly that there were none.
+    by_sym = {}
+    for it in lanes[1] + lanes[2]:
+        by_sym.setdefault(it["symbol"], []).append(it)
+    for s in signals:
+        day = datetime.fromisoformat(s["date"]).date()
+        ctx = [f for f in by_sym.get(s["symbol"], []) if abs((_parse(f["date"]).date() - day).days) <= 3]
+        s["context"] = [{"label": f["label"], "summary": f.get("summary") or f["subject"], "url": f["url"]} for f in ctx[:3]]
+        s["why"] = (f"Filed around the move: {ctx[0]['label'].lower()}" if ctx else "No company filing near this move - likely market / sector flow or news.")
+
     # Stack related items: a results filing, its deck, transcript and press
     # release are one story, so the extras are folded under the lead card.
     needs = sorted(lanes[1] + signals, key=lambda x: (-x["weight"], -_ts(x.get("date"))))

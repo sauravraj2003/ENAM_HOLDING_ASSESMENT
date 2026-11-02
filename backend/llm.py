@@ -40,8 +40,15 @@ PROVIDERS = {
     "anthropic": ("https://api.anthropic.com/v1", "FINN_ANTHROPIC_API_KEY",
                   "claude-haiku-5-5", "claude-sonnet-5-5"),
     "ollama": ("http://localhost:11434/v1", None, "llama3.2", "llama3.1"),
+    # Keyless last resort so the demo works with zero setup. Only public filing
+    # text is ever sent. Disable with FINN_KEYLESS=0.
+    "pollinations": ("https://text.pollinations.ai/openai", None, "openai", "openai"),
 }
 _AUTO_ORDER = ["gemini", "groq", "openrouter", "cerebras", "anthropic"]
+_KEYLESS_GAP = 3.0
+_keyless_lock = threading.Lock()
+_keyless_last = [0.0]
+_keyless_blocked_until = [0.0]  # set when the free tier says "quota exceeded"
 
 _usage_lock = threading.Lock()
 USAGE = {"calls": 0, "cache_hits": 0, "in_tokens": 0, "out_tokens": 0, "by_tier": {"fast": 0, "smart": 0}}
@@ -63,6 +70,9 @@ def _resolve(tier: str):
         base, key_env, f, s = PROVIDERS[prov]
         if os.environ.get(key_env or ""):
             return prov, base, os.environ[key_env], f if tier == "fast" else s
+    if os.environ.get("FINN_KEYLESS", "1") != "0" and time.time() > _keyless_blocked_until[0]:
+        base, _, f, s = PROVIDERS["pollinations"]
+        return "pollinations", base, "keyless", f if tier == "fast" else s
     raise LLMUnavailable("no LLM provider configured")
 
 
@@ -99,10 +109,22 @@ def _call(prov, base, key, model, system, prompt, max_tokens, json_mode):
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}]}
     if json_mode and prov in ("groq", "openrouter", "cerebras", "ollama", "gemini"):
         body["response_format"] = {"type": "json_object"}
-    r = requests.post(f"{base}/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=body, timeout=120)
+    url, headers = f"{base}/chat/completions", {"Authorization": f"Bearer {key}"}
+    if prov == "pollinations":
+        url, headers = base, {}
+        body.pop("temperature")
+        body["max_tokens"] = max_tokens + 1500  # reasoning model: leave room to think
+        with _keyless_lock:  # anonymous tier is rate limited; serialise calls
+            wait = _keyless_last[0] + _KEYLESS_GAP - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            r = requests.post(url, headers=headers, json=body, timeout=180)
+            _keyless_last[0] = time.time()
+    else:
+        r = requests.post(url, headers=headers, json=body, timeout=120)
     if r.status_code == 400 and "response_format" in body:
         body.pop("response_format")
-        r = requests.post(f"{base}/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=body, timeout=120)
+        r = requests.post(url, headers=headers, json=body, timeout=120)
     r.raise_for_status()
     d = r.json()
     u = d.get("usage") or {}
@@ -129,6 +151,9 @@ def complete(prompt: str, *, tier: str = "fast", system: str = "", max_tokens: i
         except requests.HTTPError as e:
             last = e
             code = e.response.status_code if e.response is not None else 0
+            if prov == "pollinations" and code in (402, 403, 429):
+                _keyless_blocked_until[0] = time.time() + 15 * 60
+                raise LLMUnavailable("free keyless model is over quota; add GEMINI_API_KEY or GROQ_API_KEY") from e
             if code in (429, 500, 502, 503, 529):
                 time.sleep(4 * (attempt + 1))
                 continue

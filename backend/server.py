@@ -111,6 +111,8 @@ def _llm_route(fn, sym):
         return jsonify({"disabled": True, "reason": "No model configured. Add GEMINI_API_KEY or GROQ_API_KEY to backend/.env"})
     try:
         return jsonify(fn(sym.upper()))
+    except llm.LLMUnavailable as e:
+        return jsonify({"disabled": True, "reason": str(e)})
     except Exception as e:
         return _err(e)
 

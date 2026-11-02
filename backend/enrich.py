@@ -130,7 +130,7 @@ def _filing_results(url: str) -> dict | None:
             "filing_url": url}
 
 
-@store.cached("enrich-results", ttl=12 * 3600)
+@store.cached("enrich-results", ttl=3 * 3600)
 def results_card(symbol: str, url: str | None = None, title: str = ""):
     c = screener.company(symbol)
     base = _screener_results(c)
@@ -140,6 +140,16 @@ def results_card(symbol: str, url: str | None = None, title: str = ""):
     if not card:
         return None
     card = dict(card)
+    if from_filing and base and base["period"] == from_filing.get("period"):
+        # Fill any column the model skipped from the reported table for the same quarter.
+        b = {m["metric"]: m for m in base["metrics"]}
+        for m in card["metrics"]:
+            ref = b.get(m["metric"]) or {}
+            for k in ("cur", "prev", "yoy"):
+                if m.get(k) is None and ref.get(k) is not None:
+                    m[k] = ref[k]
+            m["qoq_pct"], m["yoy_pct"] = _pct(m.get("cur"), m.get("prev")), _pct(m.get("cur"), m.get("yoy"))
+        card["yoy_period"] = card.get("yoy_period") or base.get("yoy_period")
     # Cross-check: same quarter in both sources -> show agreement.
     if from_filing and base and base["period"] == (from_filing.get("period") or filing_q):
         b = {m["metric"]: m["cur"] for m in base["metrics"]}
@@ -169,7 +179,18 @@ FILING:
 _NAME = re.compile(r"\b(?:Mr|Ms|Mrs|Dr|Shri|Smt)\.?\s+([A-Z][a-zA-Z.]+(?:\s+[A-Z][a-zA-Z.]+){0,3})")
 
 
-@store.cached("enrich-mgmt")
+_PROSE = re.compile(r"\b(experience|years|served|graduate|degree|joined|worked|career|holds|qualified|chartered)\b", re.I)
+
+
+def _profile_sentences(txt: str) -> str:
+    """Pull 1-2 biographical sentences from the filing without a model."""
+    flat = re.sub(r"\s+", " ", txt)
+    sents = re.split(r"(?<=[.;])\s+", flat)
+    good = [s for s in sents if 60 < len(s) < 400 and len(_PROSE.findall(s)) >= 1 and "Regulation" not in s and "SEBI" not in s]
+    return " ".join(good[:2])
+
+
+@store.cached("enrich-mgmt", ttl=6 * 3600)
 def mgmt_card(symbol: str, url: str, title: str = "", summary: str = ""):
     txt = filings.text(url, max_pages=8)
     people = []
@@ -179,12 +200,13 @@ def mgmt_card(symbol: str, url: str, title: str = "", summary: str = ""):
         except Exception as e:
             log.warning("mgmt extraction failed: %s", e)
     if not people:
-        # Deterministic fallback: first named person + the 'brief profile' paragraph if present.
-        hay = f"{summary}\n{txt}"
+        # Deterministic fallback: named people + any biographical sentences in the filing.
+        hay = f"{title}\n{summary}\n{txt}"
         names = [n for n in dict.fromkeys(_NAME.findall(hay)) if len(n) > 4][:2]
-        prof = re.search(r"brief profile[^\n]*\n(.{40,700}?)(?:\n\s*\n|$)", txt, re.I | re.S)
-        change = "resigned" if re.search(r"resign|cessation|ceas", hay, re.I) else "appointed"
-        people = [{"name": n, "role": "", "change": change, "bio": (prof.group(1).strip() if prof and i == 0 else ""),
+        change = ("retired" if re.search(r"retire", hay, re.I) else "resigned" if re.search(r"resign|cessation|ceas", hay, re.I)
+                  else "appointed")
+        bio = _profile_sentences(txt)
+        people = [{"name": n, "role": "", "change": change, "bio": bio if i == 0 else "",
                    "prior": [], "effective": "", "reason": ""} for i, n in enumerate(names)]
     company = screener.company(symbol)["name"]
     for p in people:
