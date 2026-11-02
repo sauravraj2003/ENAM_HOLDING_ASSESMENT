@@ -89,7 +89,8 @@ def holdings():
 @app.get("/api/search")
 def search():
     try:
-        return jsonify(screener.search(request.args.get("q", "")))
+        query = " ".join(request.args.get("q", "").split()).upper()
+        return jsonify(screener.search(query))
     except Exception as e:
         return _err(e)
 

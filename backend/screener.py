@@ -2,6 +2,7 @@
 (annual reports, concall transcripts, investor decks) for any NSE symbol."""
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from bs4 import BeautifulSoup
@@ -46,7 +47,7 @@ def _table(soup, section_id: str):
 
 def _fetch_page(symbol: str, consolidated: bool):
     url = f"{BASE}/company/{symbol}/{'consolidated/' if consolidated else ''}"
-    return url, net.get(url).text
+    return url, net.get(url, timeout=12, retries=1).text
 
 
 def _has_data(soup) -> bool:
@@ -151,12 +152,18 @@ def announcements(symbol: str):
     c = company(symbol)
     items = list(c["announcements"])
     if c.get("company_id"):
-        for kind in ("recent", "important"):
+        def fetch_kind(kind):
             try:
-                html = net.get(f"{BASE}/announcements/{kind}/{c['company_id']}/").text
-                items += _parse_announcements(BeautifulSoup(html, "html.parser"))
+                return net.get(f"{BASE}/announcements/{kind}/{c['company_id']}/", timeout=12, retries=1).text
             except Exception:
-                pass
+                return ""
+
+        # These feeds are independent. Parallel requests avoid adding two full
+        # network round trips to every company's announcement fetch.
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            for html in ex.map(fetch_kind, ("recent", "important")):
+                if html:
+                    items += _parse_announcements(BeautifulSoup(html, "html.parser"))
     seen, out = set(), []
     for it in items:
         if it["url"] in seen:

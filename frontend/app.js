@@ -41,8 +41,15 @@ async function renderBrief() {
   const v = $("#view");
   v.innerHTML = `<div class="seg">${WINDOWS.map(([h, l]) => `<button data-h="${h}" class="${h == HOURS ? "on" : ""}">${l}</button>`).join("")}</div><div id="b">${skel(6)}</div>`;
   v.querySelectorAll(".seg button").forEach(b => b.onclick = () => { HOURS = +b.dataset.h; store.set("finn-hours", HOURS); renderBrief(); });
-  try { DIGEST = await api(`/api/digest?hours=${HOURS}`); } catch (e) { $("#b").innerHTML = `<p class="neg">Couldn't load: ${esc(e.message)}</p>`; return; }
-  if (TAB !== "brief") return;
+  const hours = HOURS, key = `finn-digest-${hours}`;
+  const cached = store.get(key, null);
+  if (cached?.body) {
+    DIGEST = cached.digest;
+    $("#b").innerHTML = `<p class="src">Saved brief · ${esc(new Date(cached.digest.generated_at).toLocaleString())} · refreshing…</p>${cached.body}`;
+    bindBriefItems();
+  }
+  try { DIGEST = await api(`/api/digest?hours=${hours}`); } catch (e) { if (!cached?.body) $("#b").innerHTML = `<p class="neg">Couldn't load: ${esc(e.message)}</p>`; return; }
+  if (TAB !== "brief" || HOURS !== hours) return;
   const d = DIGEST, open = d.needs_you.filter(i => !done.has(i.id));
   $("#b").innerHTML = `
    <div class="hero"><div class="big">${d.counts.filings} filings across your 18 names. <b>${open.length}</b> need you.</div>
@@ -52,6 +59,10 @@ async function renderBrief() {
    ${d.glance.length ? `<h2>Worth a glance</h2>${d.glance.map(row).join("")}` : ""}
    ${d.routine.length ? `<h2>Routine · ${d.counts.routine}</h2>${d.routine.map(g => `<details class="rt"><summary>${esc(g.label)} × ${g.count}</summary>${g.items.map(row).join("")}</details>`).join("")}` : ""}
    ${d.coverage_gaps.length && HOURS > 72 ? `<p class="src">Coverage: ${d.coverage_gaps.map(g => `${g.symbol} (${esc(g.reason)})`).join(", ")}</p>` : ""}`;
+  bindBriefItems();
+  store.set(key, { digest: DIGEST, body: $("#b").innerHTML });
+}
+function bindBriefItems() {
   $("#b").querySelectorAll("[data-id]").forEach(el => { el.onclick = () => openItem(el.dataset.id); swipe(el); });
 }
 const ITEMS = () => DIGEST ? [...DIGEST.needs_you, ...DIGEST.glance, ...DIGEST.routine.flatMap(g => g.items)] : [];
@@ -109,7 +120,22 @@ async function renderAsk(sym) {
    <div class="chips" id="sugg">${(META.research_demo || []).map(s => `<button class="chip" data-s="${s}">${s}</button>`).join("")}</div><div id="r"></div>`;
   v.querySelectorAll("[data-s]").forEach(b => b.onclick = () => dossier(b.dataset.s));
   const q = $("#q"); let t;
-  q.oninput = () => { clearTimeout(t); t = setTimeout(async () => { if (q.value.length < 2) return; const res = await api(`/api/search?q=${encodeURIComponent(q.value)}`).catch(() => []); $("#sugg").innerHTML = res.slice(0, 6).map(s => `<button class="chip" data-s="${s.symbol}">${esc(s.name)}</button>`).join(""); $("#sugg").querySelectorAll("[data-s]").forEach(b => b.onclick = () => dossier(b.dataset.s)); }, 250); };
+  const showSuggestions = results => {
+    $("#sugg").innerHTML = results.slice(0, 6).map(s => `<button class="chip" data-s="${s.symbol}">${esc(s.name)}</button>`).join("");
+    $("#sugg").querySelectorAll("[data-s]").forEach(b => b.onclick = () => dossier(b.dataset.s));
+  };
+  q.oninput = () => {
+    clearTimeout(t);
+    const query = q.value.trim(), normalized = query.toUpperCase();
+    if (query.length < 2) { showSuggestions((META.research_demo || []).map(symbol => ({ symbol, name: symbol }))); return; }
+    const key = `finn-search-${normalized}`, cached = store.get(key, null);
+    if (cached) showSuggestions(cached);
+    t = setTimeout(async () => {
+      const res = await api(`/api/search?q=${encodeURIComponent(query)}`).catch(() => null);
+      if (res === null || q.value.trim().toUpperCase() !== normalized) return;
+      store.set(key, res); showSuggestions(res);
+    }, 250);
+  };
   q.onkeydown = e => { if (e.key === "Enter") { const f = $("#sugg [data-s]"); dossier(f ? f.dataset.s : q.value.trim().toUpperCase()); } };
   $("#mic").onclick = () => voice(txt => { q.value = txt; q.oninput(); });
   if (sym) dossier(sym);
