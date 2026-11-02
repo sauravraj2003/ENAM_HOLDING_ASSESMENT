@@ -1,5 +1,7 @@
 # FINN: a filter for investors
 
+**Live demo:** [finn-investor-agent.onrender.com](https://finn-investor-agent.onrender.com/)
+
 FINN is a mobile-first investment agent for an 18-stock NSE portfolio. It assumes the investor's scarce resource is attention. **Push** tells you what changed and hides everything else. **Pull** researches any NSE company using only primary sources.
 
 ## Run it
