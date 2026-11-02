@@ -5,6 +5,7 @@ import functools
 import hashlib
 import json
 import os
+import tempfile
 import threading
 import time
 
@@ -35,10 +36,20 @@ def get(ns: str, key: str, ttl: float | None = None):
 
 def put(ns: str, key: str, value) -> None:
     p = _path(ns, key)
-    tmp = p + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(value, f, ensure_ascii=False, default=str)
-    os.replace(tmp, p)
+    # Requests can populate the same cache entry concurrently. A fixed `.tmp`
+    # name lets one writer replace the file while another still expects it to
+    # exist, producing ENOENT on Render. Give each writer its own temp file in
+    # the destination directory so os.replace remains atomic on the same FS.
+    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(p) + ".", suffix=".tmp", dir=os.path.dirname(p))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(value, f, ensure_ascii=False, default=str)
+        os.replace(tmp, p)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
 
 
 def cached(ns: str, ttl: float | None = None):
