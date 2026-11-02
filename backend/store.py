@@ -12,6 +12,14 @@ import time
 from config import CACHE_DIR, DEFAULT_RULES
 
 _lock = threading.Lock()
+_flight_guard = threading.Lock()
+_flights = {}
+
+
+class _Flight:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.users = 0
 
 
 def _path(ns: str, key: str) -> str:
@@ -59,14 +67,34 @@ def cached(ns: str, ttl: float | None = None):
         @functools.wraps(fn)
         def wrapper(*args, refresh: bool = False, **kwargs):
             key = json.dumps([fn.__name__, args, kwargs], sort_keys=True, default=str)
-            if not refresh:
+            if refresh:
+                hit = None
+            else:
                 hit = get(ns, key, ttl)
-                if hit is not None:
-                    return hit
-            val = fn(*args, **kwargs)
-            if val is not None:
-                put(ns, key, val)
-            return val
+            if hit is not None:
+                return hit
+
+            flight_key = ns + ":" + hashlib.sha256(key.encode("utf-8")).hexdigest()
+            with _flight_guard:
+                flight = _flights.setdefault(flight_key, _Flight())
+                flight.users += 1
+            try:
+                with flight.lock:
+                    # Another request may have filled this cache while this
+                    # one waited. Recheck to avoid duplicate upstream calls.
+                    if not refresh:
+                        hit = get(ns, key, ttl)
+                        if hit is not None:
+                            return hit
+                    val = fn(*args, **kwargs)
+                    if val is not None:
+                        put(ns, key, val)
+                    return val
+            finally:
+                with _flight_guard:
+                    flight.users -= 1
+                    if flight.users == 0:
+                        _flights.pop(flight_key, None)
 
         return wrapper
 

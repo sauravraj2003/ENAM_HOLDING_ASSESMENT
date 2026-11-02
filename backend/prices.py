@@ -2,12 +2,14 @@
 
 import logging
 import math
+import threading
 import warnings
 
 import store
 
 warnings.filterwarnings("ignore")
 log = logging.getLogger(__name__)
+_yfinance_lock = threading.Lock()
 
 
 def _yahoo(symbol: str) -> str:
@@ -20,8 +22,12 @@ def history(symbols: tuple, period: str = "6mo"):
     import yfinance as yf
 
     tickers = [_yahoo(s) for s in symbols]
-    df = yf.download(tickers, period=period, interval="1d", group_by="ticker",
-                     auto_adjust=False, progress=False, threads=True)
+    # Yahoo rate-limits parallel crumb requests, and concurrent downloads can
+    # race while yfinance persists its shared cookie cache. Serialize downloads
+    # in this process and use sequential ticker requests for a cold batch.
+    with _yfinance_lock:
+        df = yf.download(tickers, period=period, interval="1d", group_by="ticker",
+                         auto_adjust=False, progress=False, threads=False)
     out = {}
     for sym, t in zip(symbols, tickers):
         try:
