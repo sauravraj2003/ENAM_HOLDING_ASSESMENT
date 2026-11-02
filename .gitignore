@@ -1,0 +1,4 @@
+backend/.cache/
+backend/.env
+__pycache__/
+server.log
