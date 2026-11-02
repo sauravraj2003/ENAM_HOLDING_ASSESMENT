@@ -169,7 +169,9 @@ def announcements(symbol: str):
 
 @store.cached("screener-search", ttl=7 * 86400)
 def search(q: str):
-    r = net.get(f"{BASE}/api/company/search/?q={q}&v=3&fts=1")
+    # Typeahead must fail promptly when Screener is slow; the shared default
+    # (three attempts at 30 seconds each) makes a stalled search feel frozen.
+    r = net.get(f"{BASE}/api/company/search/?q={q}&v=3&fts=1", timeout=8, retries=0)
     out = []
     for it in r.json():
         m = re.match(r"/company/([^/]+)/", it.get("url") or "")

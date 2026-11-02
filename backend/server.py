@@ -3,6 +3,7 @@
 import logging
 import os
 import queue
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
@@ -96,13 +97,20 @@ def search():
 @app.get("/api/research/<sym>/core")
 def r_core(sym):
     try:
-        d = research.core(sym.upper())
-        research.warm(sym.upper())
-        try:
-            h = prices.history((sym.upper(),), "1y").get(sym.upper())
-            d["price"] = prices.snapshot(h) if h else None
-        except Exception:
-            d["price"] = None
+        symbol = sym.upper()
+        # The fundamentals page and Yahoo price history are independent
+        # upstream requests. Run them together for a faster first dossier.
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            core_future = ex.submit(research.core, symbol)
+            price_future = ex.submit(prices.history, (symbol,), "1y")
+            d = core_future.result()
+            try:
+                history = price_future.result()
+            except Exception:
+                history = {}
+        research.warm(symbol)
+        h = history.get(symbol)
+        d["price"] = prices.snapshot(h) if h else None
         return jsonify(d)
     except Exception as e:
         return _err(e, 404)

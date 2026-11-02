@@ -93,11 +93,18 @@ def digest(hours: float | None = None, rules: dict | None = None):
     hours = hours or rules["window_hours"]
     now = datetime.now(IST)
     since = now - timedelta(hours=hours)
-    snaps = market_snapshots(rules["volume_lookback"])
+    # Price history and announcements come from independent upstreams. Fetch
+    # them concurrently so the first brief waits for the slower source rather
+    # than adding both network delays together.
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        prices_future = ex.submit(market_snapshots, rules["volume_lookback"])
+        announcements_future = ex.submit(_fetch_all)
+        snaps = prices_future.result()
+        fetched = announcements_future.result()
     lanes = {1: [], 2: [], 3: []}
     coverage_gaps = []
     total = 0
-    for sym, items, err in _fetch_all():
+    for sym, items, err in fetched:
         if err:
             coverage_gaps.append({"symbol": sym, "reason": "fetch failed"})
             continue
@@ -204,6 +211,9 @@ def broadcast(event: dict):
 
 
 def _watch_loop():
+    # Let the first user-triggered request populate shared caches before the
+    # background watcher starts the same portfolio scrape on a fresh worker.
+    time.sleep(30)
     seen = set(store.get("state", _seen_path_key) or [])
     first = not seen
     while True:
