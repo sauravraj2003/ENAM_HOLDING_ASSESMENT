@@ -7,11 +7,15 @@ FINN is a mobile-first investment agent for an 18-stock NSE portfolio. It assume
 ```bash
 cd backend
 pip install -r requirements.txt
-cp .env.example .env        # add GEMINI_API_KEY (free) or GROQ_API_KEY; optional
+cp .env.example .env        # add GROQ_API_KEY (or another supported provider); optional
 python server.py            # http://localhost:8000 — open on your phone via your LAN IP
 ```
 
 The app runs without any model key. Everything that is arithmetic (digest, alerts, results tables, fundamentals, flags) is deterministic. A key adds the results-filing extraction, the management bios, the "promised vs delivered" ledger, bull/bear and grounded Q&A.
+
+## Deploy on Render
+
+The root `render.yaml` defines a single-instance web service with Gunicorn and a health check. Push the repository to GitHub, then create a Blueprint in Render from that repository and enter `GROQ_API_KEY` when prompted. The free service can sleep when idle; its local cache and saved rules are temporary and reset after restarts or spin-downs.
 
 ## What's in it
 

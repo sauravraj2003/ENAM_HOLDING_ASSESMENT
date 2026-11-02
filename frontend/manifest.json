@@ -1,0 +1,19 @@
+{
+  "name": "FINN Portfolio Agent",
+  "short_name": "FINN",
+  "description": "Push triage and on-demand research for your 18-stock NSE portfolio.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1114",
+  "theme_color": "#0f1114",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["finance", "productivity"]
+}

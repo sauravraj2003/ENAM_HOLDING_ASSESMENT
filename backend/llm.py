@@ -8,8 +8,8 @@ Two tiers, picked per call site:
 
 Any OpenAI-compatible provider works (Gemini, Groq, OpenRouter, Cerebras,
 Ollama) plus Anthropic natively. Pick with env vars, e.g.
-  FINN_FAST=groq:llama-3.1-8b-instant
-  FINN_SMART=gemini:gemini-2.5-flash
+  FINN_FAST=groq:openai/gpt-oss-20b
+  FINN_SMART=groq:openai/gpt-oss-120b
 or just set one API key and the defaults below are used.
 
 Every response is cached on disk by (model, prompt), so re-opening a filing or
@@ -32,7 +32,7 @@ PROVIDERS = {
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY",
                "gemini-2.5-flash-lite", "gemini-2.5-flash"),
     "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY",
-             "llama-3.1-8b-instant", "llama-3.3-70b-versatile"),
+             "openai/gpt-oss-20b", "openai/gpt-oss-120b"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY",
                    "google/gemini-2.5-flash-lite", "google/gemini-2.5-flash"),
     "cerebras": ("https://api.cerebras.ai/v1", "CEREBRAS_API_KEY",

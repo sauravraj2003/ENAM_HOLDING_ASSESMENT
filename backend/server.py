@@ -18,6 +18,8 @@ from config import PORT, PORTFOLIO, RESEARCH_DEMO
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 FRONT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
 app = Flask(__name__, static_folder=None)
+# Start the in-process alert watcher for both `python server.py` and WSGI hosts.
+push.start_watcher()
 
 
 def _err(e, code=500):

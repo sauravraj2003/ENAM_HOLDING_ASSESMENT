@@ -4,3 +4,4 @@ beautifulsoup4>=4.12
 yfinance>=0.2.40
 pandas>=2.0
 pypdf>=4.0
+gunicorn>=23.0

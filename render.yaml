@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: finn-investor-agent
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --threads 8 --worker-class gthread --bind 0.0.0.0:$PORT server:app
+    healthCheckPath: /api/meta
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: GROQ_API_KEY
+        sync: false
+      - key: FINN_FAST
+        value: groq:openai/gpt-oss-20b
+      - key: FINN_SMART
+        value: groq:openai/gpt-oss-120b

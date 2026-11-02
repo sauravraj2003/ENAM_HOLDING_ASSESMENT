@@ -169,6 +169,8 @@ def digest(hours: float | None = None, rules: dict | None = None):
 _subscribers: list[queue.Queue] = []
 _sub_lock = threading.Lock()
 _seen_path_key = "seen-alert-ids"
+_watcher_lock = threading.Lock()
+_watcher_thread = None
 
 
 def alerts(rules: dict | None = None):
@@ -225,4 +227,9 @@ def _slim(a):
 
 
 def start_watcher():
-    threading.Thread(target=_watch_loop, name="finn-watcher", daemon=True).start()
+    global _watcher_thread
+    with _watcher_lock:
+        if _watcher_thread and _watcher_thread.is_alive():
+            return
+        _watcher_thread = threading.Thread(target=_watch_loop, name="finn-watcher", daemon=True)
+        _watcher_thread.start()
